@@ -5,7 +5,8 @@ const db = require("../config/db");
 const {
     uploadFile,
     generateDownloadUrl,
-    deleteFile
+    deleteFile,
+    abortMultipartUpload
 } = require("../services/s3.service");
 
 const {
@@ -244,11 +245,111 @@ async function deleteUserFile(req, res) {
     }
 }
 
+async function abortMultipartUploadController(req, res) {
+    try {
+        const userId = req.user.userId;
+        const { uploadId } = req.body;
+
+        // 1. Validate uploadId
+        if (!uploadId) {
+            return res.status(400).json({
+                success: false,
+                message: "uploadId is required"
+            });
+        }
+
+        // 2. Find upload session belonging to this user
+        const [sessions] = await db.execute(
+            `
+            SELECT
+                id,
+                upload_id,
+                s3_key,
+                status
+            FROM upload_sessions
+            WHERE upload_id = ?
+              AND user_id = ?
+            `,
+            [uploadId, userId]
+        );
+
+        if (sessions.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Upload session not found"
+            });
+        }
+
+        const session = sessions[0];
+
+        // 3. Don't abort completed upload
+        if (session.status === "completed") {
+            return res.status(400).json({
+                success: false,
+                message: "Upload is already completed"
+            });
+        }
+
+        // 4. Don't abort an already aborted upload
+        if (session.status === "aborted") {
+            return res.status(400).json({
+                success: false,
+                message: "Upload is already aborted"
+            });
+        }
+
+        // 5. Abort multipart upload in S3
+        await abortMultipartUpload(
+            session.s3_key,
+            uploadId
+        );
+
+        // 6. Mark upload session as aborted
+        await db.execute(
+            `
+            UPDATE upload_sessions
+            SET status = 'aborted'
+            WHERE id = ?
+            `,
+            [session.id]
+        );
+
+        // 7. Delete temporary uploaded-part records
+        await db.execute(
+            `
+            DELETE FROM upload_parts
+            WHERE upload_session_id = ?
+            `,
+            [session.id]
+        );
+
+        // 8. Send response
+        return res.status(200).json({
+            success: true,
+            message: "Multipart upload aborted and cleaned up successfully",
+            uploadId,
+            status: "aborted"
+        });
+
+    } catch (error) {
+        console.error(
+            "Abort multipart upload error:",
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to abort multipart upload"
+        });
+    }
+}
+
 
 
 module.exports = {
     uploadSingleFile,
     getUserFiles,
     downloadFile,
-    deleteUserFile
+    deleteUserFile,
+    abortMultipartUploadController
 };

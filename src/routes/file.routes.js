@@ -1,7 +1,9 @@
 const express = require("express");
 
 const upload = require("../middleware/upload.middleware");
-const authenticateToken = require("../middleware/auth.middleware");
+
+const authenticateToken =
+    require("../middleware/auth.middleware");
 
 const {
     uploadSingleFile,
@@ -10,13 +12,10 @@ const {
     deleteUserFile
 } = require("../controllers/file.controller");
 
-const {
-    recordUploadedPart,
-    getUploadProgress
-} = require("../controllers/multipart.controller");
-
 const router = express.Router();
 
+
+// Single file upload
 router.post(
     "/upload",
     authenticateToken,
@@ -24,35 +23,29 @@ router.post(
     uploadSingleFile
 );
 
+
+// Get user's files
 router.get(
     "/",
     authenticateToken,
     getUserFiles
 );
 
+
+// Download file
 router.get(
     "/:id/download",
     authenticateToken,
     downloadFile
 );
 
+
+// Delete file
 router.delete(
     "/:id",
     authenticateToken,
     deleteUserFile
 );
-router.post(
-    "/multipart/part",
-    authenticateToken,
-    recordUploadedPart
-);
-
-router.get(
-    "/multipart/progress/:uploadId",
-    authenticateToken,
-    getUploadProgress
-);
-
 
 
 module.exports = router;

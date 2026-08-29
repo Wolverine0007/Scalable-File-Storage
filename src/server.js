@@ -4,6 +4,13 @@ const app = require("./app");
 const db = require("./config/db");
 const redisClient = require("./config/redis");
 
+
+const {
+    startMultipartCleanupJob
+} = require("./jobs/multipart-cleanup.job");
+
+startMultipartCleanupJob();
+
 const PORT = process.env.PORT || 3000;
 
 async function startServer() {

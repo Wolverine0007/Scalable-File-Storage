@@ -5,7 +5,8 @@ const {
     CreateMultipartUploadCommand,
     UploadPartCommand,
     CompleteMultipartUploadCommand,
-    HeadObjectCommand
+    HeadObjectCommand,
+    AbortMultipartUploadCommand
 } = require("@aws-sdk/client-s3");
 
 
@@ -145,6 +146,17 @@ async function getFileMetadata(key) {
     };
 }
 
+async function abortMultipartUpload(key, uploadId) {
+
+    const command = new AbortMultipartUploadCommand({
+        Bucket: BUCKET,
+        Key: key,
+        UploadId: uploadId
+    });
+
+    await s3.send(command);
+}
+
 
 module.exports = {
     uploadFile,
@@ -153,5 +165,6 @@ module.exports = {
     initiateMultipartUpload,
     generatePartUploadUrl,
     completeMultipartUpload,
+    abortMultipartUpload,
     getFileMetadata
 };

@@ -31,6 +31,14 @@ const MIME_TYPE = "application/octet-stream";
 // Maximum number of simultaneous uploads
 const CONCURRENCY = 5;
 
+// Enable interrupt testing with:
+// node scripts/parallel-upload.js --interrupt
+
+const INTERRUPT_MODE =
+    process.argv.includes("--interrupt");
+
+const INTERRUPT_AFTER = 5;
+
 
 // JWT token
 
@@ -356,6 +364,10 @@ async function uploadPart(
 // STEP 5 — PARALLEL UPLOAD
 // ========================================
 
+// ========================================
+// STEP 5 — PARALLEL UPLOAD
+// ========================================
+
 async function uploadParts(
     partUrls,
     uploadId
@@ -365,11 +377,27 @@ async function uploadParts(
         "\n3. Uploading parts in parallel..."
     );
 
+    // In interrupt mode, upload only the first
+    // few parts and intentionally stop.
+    const urlsToUpload =
+        INTERRUPT_MODE
+            ? partUrls.slice(0, INTERRUPT_AFTER)
+            : partUrls;
+
+    if (INTERRUPT_MODE) {
+
+        console.log(
+            `⚠ INTERRUPT MODE ENABLED`
+        );
+
+        console.log(
+            `Will upload only first ${INTERRUPT_AFTER} parts`
+        );
+    }
 
     const results = [];
 
     let nextIndex = 0;
-
 
     async function worker() {
 
@@ -378,40 +406,35 @@ async function uploadParts(
             const currentIndex =
                 nextIndex++;
 
-
             if (
                 currentIndex >=
-                partUrls.length
+                urlsToUpload.length
             ) {
+
                 return;
             }
 
-
             const part =
-                partUrls[currentIndex];
-
+                urlsToUpload[currentIndex];
 
             const result =
-                 await uploadPart(
-                 part.partNumber,
-                 part.url,
-                  uploadId
-    );
-
+                await uploadPart(
+                    part.partNumber,
+                    part.url,
+                    uploadId
+                );
 
             results.push(result);
         }
     }
 
-
     const workers = [];
-
 
     for (
         let i = 0;
         i < Math.min(
             CONCURRENCY,
-            partUrls.length
+            urlsToUpload.length
         );
         i++
     ) {
@@ -421,9 +444,7 @@ async function uploadParts(
         );
     }
 
-
     await Promise.all(workers);
-
 
     // S3 expects parts in ascending order
     results.sort(
@@ -432,19 +453,33 @@ async function uploadParts(
             b.PartNumber
     );
 
+    if (INTERRUPT_MODE) {
+
+        console.log(
+            "\n⚠ UPLOAD INTERRUPTED FOR TESTING"
+        );
+
+        console.log(
+            `Uploaded parts: ${results.length}/${totalParts}`
+        );
+
+        console.log(
+            `Upload ID: ${uploadId}`
+        );
+
+        console.log(
+            "\nRun resume-upload.js using this upload ID."
+        );
+
+        return results;
+    }
 
     console.log(
         "\nAll parts uploaded successfully."
     );
 
-
     return results;
 }
-
-
-// ========================================
-// STEP 6 — COMPLETE UPLOAD
-// ========================================
 
 async function completeUpload(
     uploadId,
@@ -516,29 +551,83 @@ async function main() {
 
         // 2. Generate URLs
 
-        const partUrls =
-            await generatePartUrls(
-                upload.uploadId,
-                upload.key
-            );
+    //     const partUrls =
+    //         await generatePartUrls(
+    //             upload.uploadId,
+    //             upload.key
+    //         );
 
 
-        // 3. Upload chunks
+    //     // 3. Upload chunks
 
-        const parts =
-        await uploadParts(
+    //     const parts =
+    //     await uploadParts(
+    //     partUrls,
+    //     upload.uploadId
+    // );
+
+
+    //     // 4. Complete
+
+    //     await completeUpload(
+    //         upload.uploadId,
+    //         upload.key,
+    //         parts
+    //     );
+
+
+    const partUrls =
+    await generatePartUrls(
+        upload.uploadId,
+        upload.key
+    );
+
+const parts =
+    await uploadParts(
         partUrls,
         upload.uploadId
     );
 
+// If interrupt mode is enabled,
+// intentionally do NOT complete the upload.
 
-        // 4. Complete
+if (INTERRUPT_MODE) {
 
-        await completeUpload(
-            upload.uploadId,
-            upload.key,
-            parts
-        );
+    console.log(
+        "\n================================"
+    );
+
+    console.log(
+        "UPLOAD INTERRUPTED"
+    );
+
+    console.log(
+        "Upload ID:",
+        upload.uploadId
+    );
+
+    console.log(
+        "Uploaded parts:",
+        parts.length
+    );
+
+    console.log(
+        "Run resume-upload.js to continue."
+    );
+
+    console.log(
+        "================================\n"
+    );
+
+    return;
+}
+
+// Normal upload → complete multipart upload
+await completeUpload(
+    upload.uploadId,
+    upload.key,
+    parts
+);
 
 
         const endTime =
